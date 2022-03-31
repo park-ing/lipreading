@@ -9,7 +9,7 @@ from TSM_resnet18 import ResNet, BasicBlock
 모든 TorchVision Dataset은 샘플과 정답을 각각 변경하기 위한 
 transform과 target_transform의 두 인자를 포함한다.
 '''
-
+#
 # 공개 데이터셋에서 학습 데이터 다운
 train_data = datasets.CIFAR10(
     root="data1",
