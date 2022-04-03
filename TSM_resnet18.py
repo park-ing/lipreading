@@ -23,19 +23,42 @@ def downsample_basic_block_v2( inplanes, outplanes, stride ):
                 nn.BatchNorm2d(outplanes),
             )
 
-
+def shift(x, n_segment, fold_div=3, inplace=False):
+    nt, c, h, w = x.size()
+    n_batch = nt // n_segment
+    x = x.view(n_batch, n_segment, c, h, w)
+    print("***********", n_segment)
+    #print("---shift---")
+    #print("shift shape",x.shape)
+    fold = c // fold_div
+    if inplace:
+        # Due to some out of order error when performing parallel computing. 
+        # May need to write a CUDA kernel.
+        raise NotImplementedError  
+        # out = InplaceShift.apply(x, fold)
+    else:
+        out = torch.zeros_like(x)
+        out[:, :-1, :fold] = x[:, 1:, :fold]  # shift left
+        #print("shift start")
+        #print(out)
+        out[:, 1:, fold: 2 * fold] = x[:, :-1, fold: 2 * fold]  # shift right
+        #print(out)
+        out[:, :, 2 * fold:] = x[:, :, 2 * fold:]  # not shift
+        #print(out)
+        #print("---merge---")
 
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, relu_type = 'relu' ):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, relu_type = 'relu', n_batch=32 ):
         super(BasicBlock, self).__init__()
 
         assert relu_type in ['relu','prelu']
 
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
+        self.n_batch = n_batch
 
         # type of ReLU is an input option
         if relu_type == 'relu':
@@ -56,6 +79,7 @@ class BasicBlock(nn.Module):
 
     def forward(self, x):
         residual = x
+        out = shift(x,n_segment=32,fold_div=8,inplace=False)
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu1(out)
@@ -72,11 +96,12 @@ class BasicBlock(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=10, relu_type = 'relu', gamma_zero = False, avg_pool_downsample = False):
+    def __init__(self, block, layers, num_classes=10, relu_type = 'relu', gamma_zero = False, avg_pool_downsample = False, n_batch=32):
         self.inplanes = 64
         self.relu_type = relu_type
         self.gamma_zero = gamma_zero
         self.downsample_block = downsample_basic_block_v2 if avg_pool_downsample else downsample_basic_block
+        self.n_batch = n_batch
 
         super(ResNet, self).__init__()
         
@@ -86,10 +111,10 @@ class ResNet(nn.Module):
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         ##
 
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer1 = self._make_layer(block, 64, layers[0],n_batch=32)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,n_batch=32)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,n_batch=32)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,n_batch=32)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
 
         self.linear = nn.Linear(512 * block.expansion, num_classes) ## 추가
@@ -110,7 +135,7 @@ class ResNet(nn.Module):
                 if isinstance(m, BasicBlock ):
                     m.bn2.weight.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1,n_batch = 32):
 
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -148,7 +173,7 @@ class ResNet(nn.Module):
 
 
 
-    
+
     def forward(self, x):
         ## test size resize    
         x = self.conv1(x)
