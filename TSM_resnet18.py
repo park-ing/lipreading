@@ -176,7 +176,7 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         ## test size resize    
-        x = self.conv1(x)
+        x = self.conv1(x) # shift test
         x = self.bn1(x)
         x = F.relu(x)
         x = self.maxpool1(x)
