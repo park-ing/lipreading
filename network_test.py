@@ -10,6 +10,9 @@ from TSM_resnet18 import ResNet, BasicBlock
 transform과 target_transform의 두 인자를 포함한다.
 '''
 #
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
 # 공개 데이터셋에서 학습 데이터 다운
 train_data = datasets.CIFAR10(
     root="data1",
