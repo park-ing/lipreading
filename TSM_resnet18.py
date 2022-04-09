@@ -132,7 +132,7 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = F.relu(x)
         x = self.maxpool1(x)
-        #3
+        #33
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
