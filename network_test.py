@@ -60,7 +60,7 @@ print(f"Using {device} device")
 '''
 RESNET18
 '''
-model = ResNet(BasicBlock, [2,2,2,2])
+model = ResNet(BasicBlock, [2,2,2,2], n_batch=27)
 #print(model)
 model.to(device)
 
