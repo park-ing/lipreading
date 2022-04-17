@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 
 
+
 def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
@@ -27,7 +28,7 @@ def shift(x, n_segment, fold_div=3, inplace=False):
     nt, c, h, w = x.size()
     n_batch = nt // n_segment
     x = x.view(n_batch, n_segment, c, h, w)
-    print("***********", n_segment)
+    #print("***********", n_segment)
     #print("---shift---")
     #print("shift shape",x.shape)
     fold = c // fold_div
@@ -78,8 +79,9 @@ class BasicBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x):
+        #print("{} This is Basic Block batch size".format(BB))
         residual = x
-        out = shift(x,n_segment=32,fold_div=8,inplace=False)
+        #out = shift(x,n_segment=32,fold_div=8,inplace=False)
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu1(out)
@@ -106,15 +108,15 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
         
         ## test image resize
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding = 3)
+        self.conv1 = nn.Conv2d(1, self.inplanes, kernel_size=7, stride=2, padding = 3)
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.maxpool1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         ##
 
-        self.layer1 = self._make_layer(block, 64, layers[0],n_batch=32)
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,n_batch=32)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,n_batch=32)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,n_batch=32)
+        self.layer1 = self._make_layer(block, 64, layers[0], batch=self.n_batch)
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
 
         self.linear = nn.Linear(512 * block.expansion, num_classes) ## 추가
@@ -135,7 +137,8 @@ class ResNet(nn.Module):
                 if isinstance(m, BasicBlock ):
                     m.bn2.weight.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1,n_batch = 32):
+    def _make_layer(self, block, planes, blocks, stride=1, batch = 32):
+        print("============", batch)
 
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -143,35 +146,12 @@ class ResNet(nn.Module):
                                                  outplanes = planes * block.expansion, 
                                                  stride = stride )
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, relu_type = self.relu_type))
+        layers.append(block(self.inplanes, planes, stride, downsample, relu_type = self.relu_type, n_batch = batch))
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes, relu_type = self.relu_type))
 
         return nn.Sequential(*layers)
-
-
-    def make_temporal_shift(net, n_segment, n_div=8):
-    
-        n_segment_list = [n_segment] * 4
-    
-        assert n_segment_list[-1] > 0
-        print('=> n_segment per stage: {}'.format(n_segment_list))
-
-        def make_block_temporal(stage, this_segment):
-            blocks = list(stage.children())
-            print('=> Processing stage with {} blocks'.format(len(blocks)))
-            for i, b in enumerate(blocks):
-                blocks[i] = TemporalShift(b, n_segment=this_segment, n_div=n_div)
-            return nn.Sequential(*(blocks))
-
-        net.layer1 = make_block_temporal(net.layer1, n_segment_list[0])
-        net.layer2 = make_block_temporal(net.layer2, n_segment_list[1])
-        net.layer3 = make_block_temporal(net.layer3, n_segment_list[2])
-        net.layer4 = make_block_temporal(net.layer4, n_segment_list[3])
-    
-
-
 
 
     def forward(self, x):
@@ -231,22 +211,5 @@ class TemporalShift(nn.Module):
         return out.view(nt, c, h, w)
 
 
-def make_temporal_shift(net, n_segment, n_div=8):
-    
-    n_segment_list = [n_segment] * 4
-    
-    assert n_segment_list[-1] > 0
-    print('=> n_segment per stage: {}'.format(n_segment_list))
 
-    def make_block_temporal(stage, this_segment):
-                blocks = list(stage.children())
-                print('=> Processing stage with {} blocks'.format(len(blocks)))
-                for i, b in enumerate(blocks):
-                    blocks[i] = TemporalShift(b, n_segment=this_segment, n_div=n_div)
-                return nn.Sequential(*(blocks))
-
-    net.layer1 = make_block_temporal(net.layer1, n_segment_list[0])
-    net.layer2 = make_block_temporal(net.layer2, n_segment_list[1])
-    net.layer3 = make_block_temporal(net.layer3, n_segment_list[2])
-    net.layer4 = make_block_temporal(net.layer4, n_segment_list[3])
 
